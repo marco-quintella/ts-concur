@@ -1,0 +1,15 @@
+/**
+ * ts-concur docs theme: accent and typography.
+ * Overrides VitePress default theme CSS variables.
+ */
+:root {
+  --vp-c-brand-1: #0d9488;
+  --vp-c-brand-2: #14b8a6;
+  --vp-c-brand-3: #2dd4bf;
+}
+
+.dark {
+  --vp-c-brand-1: #2dd4bf;
+  --vp-c-brand-2: #5eead4;
+  --vp-c-brand-3: #99f6e4;
+}

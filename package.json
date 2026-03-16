@@ -12,7 +12,10 @@
     "workers"
   ],
   "license": "MIT",
-  "author": "",
+  "author": {
+    "name": "Marco Quintella",
+    "email": "2om.marco.quintella@gmail.com"
+  },
   "files": [
     "dist",
     "README.md"
@@ -37,7 +40,10 @@
     "fmt:check": "oxfmt --check",
     "upgrade": "pnpm update --latest",
     "upgrade:check": "pnpm update --latest --dry-run",
-    "taze": "taze --write --install"
+    "taze": "taze --write --install",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "devDependencies": {
     "@oxfmt/binding-darwin-arm64": "^0.40.0",
@@ -50,7 +56,9 @@
     "typescript": "^5.9.3",
     "vite": "^8.0.0",
     "vite-plugin-dts": "^4.5.4",
-    "vitest": "^4.1.0"
+    "vitepress": "2.0.0-alpha.16",
+    "vitest": "^4.1.0",
+    "vue": "^3.5.30"
   },
   "engines": {
     "node": ">=20.19"
