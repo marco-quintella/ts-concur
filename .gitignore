@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Coverage
+coverage/
+
+# Logs and debug
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Test and cache
+.cache/
+.turbo/
