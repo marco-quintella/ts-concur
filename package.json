@@ -1,6 +1,6 @@
 {
   "name": "ts-concur",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Concurrent promise pool with adaptive concurrency, throttling and rate limiting for Node and browser",
   "keywords": [
     "adaptive",
@@ -18,17 +18,19 @@
     "README.md"
   ],
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
       "types": "./dist/index.d.ts"
     }
   },
   "scripts": {
     "build": "vite build",
+    "release": "semantic-release",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint src",
@@ -39,6 +41,10 @@
     "taze": "taze --write --install"
   },
   "devDependencies": {
+    "@semantic-release/commit-analyzer": "^13.0.0",
+    "@semantic-release/github": "^12.0.0",
+    "@semantic-release/npm": "^13.0.0",
+    "@semantic-release/release-notes-generator": "^14.0.0",
     "@oxfmt/binding-darwin-arm64": "^0.40.0",
     "@oxlint/binding-darwin-arm64": "^1.55.0",
     "@types/node": "^25.5.0",
@@ -48,6 +54,7 @@
     "taze": "^19.10.0",
     "typescript": "^5.9.3",
     "vite": "^5.4.21",
+    "semantic-release": "^25.0.0",
     "vite-plugin-dts": "^4.5.4",
     "vitest": "^2.1.9"
   },
