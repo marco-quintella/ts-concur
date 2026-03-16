@@ -21,7 +21,7 @@ export default defineConfig({
       entry: resolve(__dirname, "src/index.ts"),
       name: "tsConcur",
       fileName: "index",
-      formats: ["es"],
+      formats: ["es", "cjs"],
     },
     sourcemap: true,
     outDir: "dist",
