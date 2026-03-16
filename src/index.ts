@@ -10,6 +10,7 @@ export type {
   ConcurPoolOptions,
   RateLimitConfig,
   ResponseTimeBounds,
+  RunOptions,
   ThrottleConfig,
   TaskResult,
   RunResult,

@@ -5,11 +5,7 @@
 import type { RateLimitConfig } from "./types.js";
 
 function isValidRate(value: number): boolean {
-  return (
-    typeof value === "number" &&
-    Number.isFinite(value) &&
-    value > 0
-  );
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
 /**
@@ -37,13 +33,9 @@ export function createRateLimiter(config: RateLimitConfig): () => boolean {
   }
 
   const perSecond =
-    rawSecond === undefined || rawSecond === 0
-      ? Number.POSITIVE_INFINITY
-      : rawSecond;
+    rawSecond === undefined || rawSecond === 0 ? Number.POSITIVE_INFINITY : rawSecond;
   const perMinute =
-    rawMinute === undefined || rawMinute === 0
-      ? Number.POSITIVE_INFINITY
-      : rawMinute;
+    rawMinute === undefined || rawMinute === 0 ? Number.POSITIVE_INFINITY : rawMinute;
 
   if (perSecond === Number.POSITIVE_INFINITY && perMinute === Number.POSITIVE_INFINITY) {
     return () => true;

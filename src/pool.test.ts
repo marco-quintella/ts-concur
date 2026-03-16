@@ -111,12 +111,12 @@ describe("runPool", () => {
 
   it("throws when rateLimit has invalid perSecond", async () => {
     const tasks = [() => Promise.resolve(1)];
-    await expect(
-      runPool(tasks, { rateLimit: { perSecond: -1 } }),
-    ).rejects.toThrow("rateLimit.perSecond must be a positive finite number");
-    await expect(
-      runPool(tasks, { rateLimit: { perSecond: Number.NaN } }),
-    ).rejects.toThrow("rateLimit.perSecond must be a positive finite number");
+    await expect(runPool(tasks, { rateLimit: { perSecond: -1 } })).rejects.toThrow(
+      "rateLimit.perSecond must be a positive finite number",
+    );
+    await expect(runPool(tasks, { rateLimit: { perSecond: Number.NaN } })).rejects.toThrow(
+      "rateLimit.perSecond must be a positive finite number",
+    );
   });
 
   it("throws TypeError when tasks is not an array (null)", async () => {
@@ -129,20 +129,16 @@ describe("runPool", () => {
   });
 
   it("throws TypeError when tasks is not an array (undefined)", async () => {
-    await expect(
-      runPool(undefined as unknown as Array<() => Promise<number>>, {}),
-    ).rejects.toThrow(TypeError);
-    await expect(
-      runPool(undefined as unknown as Array<() => Promise<number>>, {}),
-    ).rejects.toThrow("tasks must be an array");
+    await expect(runPool(undefined as unknown as Array<() => Promise<number>>, {})).rejects.toThrow(
+      TypeError,
+    );
+    await expect(runPool(undefined as unknown as Array<() => Promise<number>>, {})).rejects.toThrow(
+      "tasks must be an array",
+    );
   });
 
   it("throws when tasks.length exceeds maxTasks", async () => {
-    const tasks = [
-      () => Promise.resolve(1),
-      () => Promise.resolve(2),
-      () => Promise.resolve(3),
-    ];
+    const tasks = [() => Promise.resolve(1), () => Promise.resolve(2), () => Promise.resolve(3)];
     await expect(runPool(tasks, { maxTasks: 2 })).rejects.toThrow(TypeError);
     await expect(runPool(tasks, { maxTasks: 2 })).rejects.toThrow(
       "tasks length 3 exceeds maximum 2",
@@ -150,10 +146,7 @@ describe("runPool", () => {
   });
 
   it("accepts tasks.length equal to maxTasks", async () => {
-    const tasks = [
-      () => Promise.resolve(1),
-      () => Promise.resolve(2),
-    ];
+    const tasks = [() => Promise.resolve(1), () => Promise.resolve(2)];
     const { results } = await runPool(tasks, { maxTasks: 2 });
     expect(results).toHaveLength(2);
     expect(results.every((r) => r.ok)).toBe(true);
@@ -161,9 +154,9 @@ describe("runPool", () => {
 
   describe("concurrency validation", () => {
     it("throws for NaN minConcurrency", async () => {
-      await expect(runPool([() => Promise.resolve(1)], { minConcurrency: Number.NaN })).rejects.toThrow(
-        RangeError,
-      );
+      await expect(
+        runPool([() => Promise.resolve(1)], { minConcurrency: Number.NaN }),
+      ).rejects.toThrow(RangeError);
     });
 
     it("throws for Infinity maxConcurrency", async () => {
@@ -196,6 +189,92 @@ describe("runPool", () => {
       });
       expect(out.results).toHaveLength(1);
       expect(out.results[0]).toMatchObject({ ok: true, value: 1 });
+    });
+  });
+
+  describe("cancellation and timeout", () => {
+    it("rejects when signal is already aborted before run", async () => {
+      const ctrl = new AbortController();
+      ctrl.abort();
+      const tasks = [() => Promise.resolve(1)];
+      await expect(runPool(tasks, { signal: ctrl.signal })).rejects.toThrow(DOMException);
+      await expect(runPool(tasks, { signal: ctrl.signal })).rejects.toMatchObject({
+        name: "AbortError",
+      });
+    });
+
+    it("rejects with custom reason when signal is aborted with reason", async () => {
+      const ctrl = new AbortController();
+      const reason = new Error("custom cancel");
+      ctrl.abort(reason);
+      const tasks = [() => Promise.resolve(1)];
+      await expect(runPool(tasks, { signal: ctrl.signal })).rejects.toBe(reason);
+    });
+
+    it("returns partial results and cancelled slots when signal aborts during run", async () => {
+      const ctrl = new AbortController();
+      const tasks = [
+        () => Promise.resolve(1),
+        () =>
+          new Promise<number>((resolve) => {
+            setTimeout(() => resolve(2), 200);
+          }),
+        () =>
+          new Promise<number>((resolve) => {
+            setTimeout(() => resolve(3), 200);
+          }),
+        () => Promise.resolve(4),
+      ];
+      const runPromise = runPool(tasks, {
+        signal: ctrl.signal,
+        maxConcurrency: 2,
+      });
+      setTimeout(() => ctrl.abort(), 30);
+      const { results } = await runPromise;
+      expect(results).toHaveLength(4);
+      const completed = results.filter((r) => r.ok);
+      const cancelled = results.filter(
+        (r) => !r.ok && r.error instanceof DOMException && r.error.name === "AbortError",
+      );
+      expect(completed.length + cancelled.length).toBe(4);
+      expect(cancelled.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("times out slow task when taskTimeoutMs is set", async () => {
+      const tasks = [
+        () => Promise.resolve(1),
+        () => new Promise<number>((r) => setTimeout(() => r(2), 200)),
+        () => Promise.resolve(3),
+      ];
+      const { results } = await runPool(tasks, {
+        taskTimeoutMs: 50,
+        maxConcurrency: 3,
+      });
+      expect(results).toHaveLength(3);
+      expect(results[0]).toMatchObject({ ok: true, value: 1 });
+      expect(results[1]).toMatchObject({ ok: false });
+      if (!results[1]!.ok) {
+        expect(results[1]!.error).toBeInstanceOf(DOMException);
+        expect((results[1]!.error as DOMException).name).toBe("TimeoutError");
+      }
+      expect(results[2]).toMatchObject({ ok: true, value: 3 });
+    });
+
+    it("completes fast task successfully with taskTimeoutMs set", async () => {
+      const tasks = [() => Promise.resolve(42)];
+      const { results } = await runPool(tasks, { taskTimeoutMs: 1000 });
+      expect(results).toHaveLength(1);
+      expect(results[0]).toMatchObject({ ok: true, value: 42 });
+    });
+
+    it("throws RangeError when taskTimeoutMs is invalid", async () => {
+      const tasks = [() => Promise.resolve(1)];
+      await expect(runPool(tasks, { taskTimeoutMs: -1 })).rejects.toThrow(RangeError);
+      await expect(runPool(tasks, { taskTimeoutMs: -1 })).rejects.toThrow(
+        "taskTimeoutMs must be a positive finite number",
+      );
+      await expect(runPool(tasks, { taskTimeoutMs: Number.NaN })).rejects.toThrow(RangeError);
+      await expect(runPool(tasks, { taskTimeoutMs: 0 })).rejects.toThrow(RangeError);
     });
   });
 });

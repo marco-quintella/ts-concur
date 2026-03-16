@@ -85,11 +85,12 @@ const batch2 = await pool.run(urls.slice(20, 40).map((url) => () => fetch(url)))
 import { runPool } from "ts-concur";
 
 const ids = [1, 2, 3, 4, 5];
-const tasks = ids.map((id) => () =>
-  fetch(`https://api.example.com/items/${id}`).then((r) => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
-  }),
+const tasks = ids.map(
+  (id) => () =>
+    fetch(`https://api.example.com/items/${id}`).then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    }),
 );
 
 const { results } = await runPool(tasks, { maxConcurrency: 3, rateLimit: { perSecond: 5 } });
@@ -112,6 +113,35 @@ console.log("Loaded", items.length, "items;", failed.length, "failed.");
 | `responseTimeBounds` | `{ minTimeMs?, maxTimeMs? }` | Target response time window for adaptive: faster than `minTimeMs` increases concurrency, slower than `maxTimeMs` decreases it. |
 | `throttle`           | `{ delayMs: number }`        | Minimum delay (ms) between **starting** two tasks.                                                                             |
 | `rateLimit`          | `{ perSecond?, perMinute? }` | Max tasks allowed to **start** per second and/or per minute.                                                                   |
+| `signal`             | AbortSignal                  | Optional. When aborted, the run stops starting new tasks and does not wait for in-flight tasks.                                |
+| `taskTimeoutMs`      | number                       | Optional. Per-task timeout (ms); tasks that exceed it get `{ ok: false, error: TimeoutError, durationMs }`. Must be positive.  |
+
+## Cancellation and timeouts
+
+- **`signal`**: Pass an `AbortSignal` (e.g. from `AbortController`) to cancel a run. If the signal is already aborted when the run starts, the returned promise **rejects** with the abort reason (like `fetch`). During the run, workers stop taking new work when the signal aborts; in-flight tasks are not awaited and their slots get `{ ok: false, error: AbortError, durationMs }`. Any task that never started is also filled with a cancelled result so `results.length === tasks.length` and order is preserved.
+- **`taskTimeoutMs`**: When set (positive finite number), each task is raced against this timeout. If the task does not settle in time, its result is `{ ok: false, error: TimeoutError, durationMs }`. The underlying task may still run in the background; the pool only stops waiting.
+
+Cancelled and timed-out tasks use the same `TaskResult` shape: `ok: false` with `error` set to a `DOMException` (name `AbortError` or `TimeoutError`).
+
+Example with AbortController:
+
+```ts
+const pool = new ConcurPool({ maxConcurrency: 4 });
+const ctrl = new AbortController();
+const timeoutId = setTimeout(() => ctrl.abort(), 5000);
+const { results } = await pool.run(tasks, { signal: ctrl.signal });
+clearTimeout(timeoutId);
+// If aborted, some results may be { ok: false, error: AbortError, durationMs }
+```
+
+Example with per-task timeout:
+
+```ts
+const { results } = await runPool(tasks, { maxConcurrency: 3, taskTimeoutMs: 10_000 });
+// Tasks taking longer than 10s yield { ok: false, error: TimeoutError, durationMs }
+```
+
+`ConcurPool` supports per-run options via a second argument: `pool.run(tasks, { signal, taskTimeoutMs })` and `pool.runOne(task, { signal, taskTimeoutMs })`.
 
 ## Adaptive concurrency
 
@@ -188,19 +218,22 @@ await pool.run(tasks);
 The API is scriptable (no interactive prompts; results are deterministic for given inputs).
 
 - **`ConcurPool(options?)`** – creates a pool with the given options.
-- **`pool.run(tasks)`** – runs an array of task factories `() => Promise<T>`, returns `Promise<RunResult<T>>`.
-- **`pool.runOne(task)`** – runs a single task and returns `Promise<TaskResult<T>>`.
-- **`runPool(tasks, options)`** – one-shot run with options (no pool instance).
+- **`pool.run(tasks, runOptions?)`** – runs an array of task factories `() => Promise<T>`, returns `Promise<RunResult<T>>`. Optional `runOptions`: `{ signal?, taskTimeoutMs? }`.
+- **`pool.runOne(task, runOptions?)`** – runs a single task and returns `Promise<TaskResult<T>>`. Optional `runOptions`: `{ signal?, taskTimeoutMs? }`.
+- **`runPool(tasks, options)`** – one-shot run with options (no pool instance). Options may include `signal` and `taskTimeoutMs`.
+
+All options are scriptable; there are no interactive prompts, so the API is suitable for automation and agent-driven use.
 
 **`RunResult<T>`**: `{ results: TaskResult<T>[], finalConcurrency?: number }`.
 
-**`TaskResult<T>`**: `{ ok: true, value: T, durationMs }` or `{ ok: false, error, durationMs }`.
+**`TaskResult<T>`**: `{ ok: true, value: T, durationMs }` or `{ ok: false, error, durationMs }`. Cancelled/timeout tasks have `ok: false` with `error` as a `DOMException` (name `AbortError` or `TimeoutError`).
+
+**`RunOptions`**: `{ signal?: AbortSignal, taskTimeoutMs?: number }` for per-run overrides on `pool.run()` and `pool.runOne()`.
 
 ## Possible roadmap
 
 Ideas under consideration (no order or commitment).
 
-- **Cancellation / timeouts** – `AbortSignal` support, per-task timeout, cancel in-flight work.
 - **Progress & observability** – Optional `onProgress({ completed, total })` or event-style hooks for progress bars and metrics.
 - **Retries** – Optional retry policy (max attempts, backoff) for failed tasks.
 - **Streaming results** – Async iterable or callback that yields results as each task finishes (unordered), for large batches.
