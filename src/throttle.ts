@@ -15,11 +15,7 @@ const MAX_DELAY_MS = 3_600_000;
  * @returns A function that returns a Promise resolving when the next task may start.
  */
 export function createThrottle(delayMs: number): () => Promise<void> {
-  if (
-    typeof delayMs !== "number" ||
-    !Number.isFinite(delayMs) ||
-    delayMs <= 0
-  ) {
+  if (typeof delayMs !== "number" || !Number.isFinite(delayMs) || delayMs <= 0) {
     return async () => {};
   }
 

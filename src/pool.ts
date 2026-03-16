@@ -7,6 +7,8 @@ import { validateAndClampConcurrency } from "./types.js";
 import { createRateLimiter } from "./rateLimit.js";
 import { createThrottle } from "./throttle.js";
 import { createAdaptiveState, adjustConcurrency, type AdaptiveState } from "./adaptive.js";
+import { whenAborted, getAbortReason } from "./abort.js";
+import { raceWithTimeout } from "./timeout.js";
 
 const DEFAULT_MIN = 1;
 const DEFAULT_MAX = 10;
@@ -36,8 +38,21 @@ export async function runPool<T>(
   }
   const maxTasksAllowed = options.maxTasks ?? MAX_TASKS;
   if (tasks.length > maxTasksAllowed) {
-    throw new TypeError(
-      `tasks length ${tasks.length} exceeds maximum ${maxTasksAllowed}`,
+    throw new TypeError(`tasks length ${tasks.length} exceeds maximum ${maxTasksAllowed}`);
+  }
+
+  const signal = options.signal;
+  if (signal?.aborted) {
+    throw getAbortReason(signal);
+  }
+
+  const taskTimeoutMs = options.taskTimeoutMs;
+  if (
+    taskTimeoutMs !== undefined &&
+    (typeof taskTimeoutMs !== "number" || !Number.isFinite(taskTimeoutMs) || taskTimeoutMs <= 0)
+  ) {
+    throw new RangeError(
+      `taskTimeoutMs must be a positive finite number, got ${String(taskTimeoutMs)}`,
     );
   }
 
@@ -59,14 +74,18 @@ export async function runPool<T>(
   const results: TaskResult<T>[] = Array.from({ length: tasks.length });
   let index = 0;
 
+  const abortError = () => getAbortReason(signal);
+
   async function runOne(): Promise<void> {
     while (true) {
+      if (signal?.aborted) break;
       const allowedByRate = rateLimitAllow();
       if (!allowedByRate) {
         await new Promise((r) => setTimeout(r, 100));
         continue;
       }
       await throttleFn();
+      if (signal?.aborted) break;
       const i = index++;
       if (i >= tasks.length) break;
       const task = tasks[i];
@@ -76,7 +95,14 @@ export async function runPool<T>(
       let value: T | undefined;
       let error: unknown;
       try {
-        value = await task();
+        let p: Promise<T> = task();
+        if (taskTimeoutMs !== undefined) {
+          p = raceWithTimeout(p, taskTimeoutMs);
+        }
+        if (signal) {
+          p = Promise.race([p, whenAborted(signal)]);
+        }
+        value = await p;
       } catch (e) {
         error = e;
       }
@@ -93,6 +119,16 @@ export async function runPool<T>(
 
   const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, () => runOne());
   await Promise.all(workers);
+
+  for (let i = 0; i < results.length; i++) {
+    if (results[i] === undefined) {
+      results[i] = {
+        ok: false,
+        error: abortError(),
+        durationMs: 0,
+      } as TaskResult<T>;
+    }
+  }
 
   const runResult: RunResult<T> = { results };
   if (adaptive && adaptiveState) {

@@ -75,6 +75,23 @@ export interface ConcurPoolOptions {
   rateLimit?: RateLimitConfig;
   /** Maximum number of tasks allowed per run. Default: 1_000_000. Exceeding throws TypeError. */
   maxTasks?: number;
+  /** Optional AbortSignal to cancel the run; when aborted, in-flight tasks are not awaited. */
+  signal?: AbortSignal;
+  /**
+   * Per-task timeout in ms. When set, each task is raced with this timeout; on timeout the result
+   * is { ok: false, error: TimeoutError, durationMs }. Must be a positive finite number.
+   */
+  taskTimeoutMs?: number;
+}
+
+/**
+ * Per-run options merged with pool options for ConcurPool.run() and runOne().
+ */
+export interface RunOptions {
+  /** Optional AbortSignal to cancel this run. */
+  signal?: AbortSignal;
+  /** Per-task timeout in ms (positive finite number). */
+  taskTimeoutMs?: number;
 }
 
 /**
