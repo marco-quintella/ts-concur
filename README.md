@@ -102,6 +102,119 @@ const failed = results.filter((r) => !r.ok);
 console.log("Loaded", items.length, "items;", failed.length, "failed.");
 ```
 
+## Examples and use cases
+
+### Web scraping or crawling with rate limit
+
+Respect a site’s crawl rate and cap concurrency to avoid overload:
+
+```ts
+import { runPool } from "ts-concur";
+
+const urls = ["https://example.com/a", "https://example.com/b", /* ... */];
+const tasks = urls.map((url) => () => fetch(url).then((r) => r.text()));
+
+const { results } = await runPool(tasks, {
+  maxConcurrency: 5,
+  rateLimit: { perSecond: 2, perMinute: 60 },
+  taskTimeoutMs: 15_000,
+});
+
+const htmlPages = results
+  .filter((r): r is { ok: true; value: string; durationMs: number } => r.ok)
+  .map((r) => r.value);
+```
+
+### Batch file or image processing
+
+Process many files (e.g. resize images, parse JSON) with a fixed concurrency to limit memory and CPU:
+
+```ts
+import { readFile } from "node:fs/promises";
+import { runPool } from "ts-concur";
+
+const filePaths = ["./a.json", "./b.json", "./c.json"];
+const tasks = filePaths.map((path) => () =>
+  readFile(path, "utf-8").then((raw) => JSON.parse(raw) as Record<string, unknown>),
+);
+
+const { results } = await runPool(tasks, { maxConcurrency: 4 });
+const parsed = results
+  .filter((r): r is { ok: true; value: Record<string, unknown>; durationMs: number } => r.ok)
+  .map((r) => r.value);
+```
+
+### Time-bounded run with cancellation
+
+Run as many tasks as possible within a time window, then cancel the rest:
+
+```ts
+import { ConcurPool } from "ts-concur";
+
+const pool = new ConcurPool({ maxConcurrency: 6 });
+const ctrl = new AbortController();
+const deadline = setTimeout(() => ctrl.abort(), 10_000);
+
+const { results } = await pool.run(tasks, { signal: ctrl.signal });
+clearTimeout(deadline);
+
+const completed = results.filter((r) => r.ok);
+const cancelled = results.filter((r) => !r.ok && r.error?.name === "AbortError");
+console.log("Completed", completed.length, "cancelled", cancelled.length);
+```
+
+### Staying under a third-party API quota
+
+Throttle and rate-limit so you never exceed the provider’s limits:
+
+```ts
+const pool = new ConcurPool({
+  maxConcurrency: 3,
+  throttle: { delayMs: 200 },
+  rateLimit: { perSecond: 5, perMinute: 200 },
+});
+
+const tasks = userIds.map((id) => () =>
+  fetch(`https://api.example.com/users/${id}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()),
+);
+const { results } = await pool.run(tasks);
+```
+
+### Batch database or query execution
+
+Run many independent queries with a concurrency cap so the DB is not overwhelmed:
+
+```ts
+import { runPool } from "ts-concur";
+
+const ids = [1, 2, 3, /* ... */];
+const tasks = ids.map((id) => () => db.query("SELECT * FROM items WHERE id = ?", [id]));
+
+const { results } = await runPool(tasks, { maxConcurrency: 10, taskTimeoutMs: 5000 });
+const rows = results
+  .filter((r): r is { ok: true; value: Item[]; durationMs: number } => r.ok)
+  .flatMap((r) => r.value);
+```
+
+### Single task through a shared pool (throttled API client)
+
+Reuse one pool as a throttled “client”: every call goes through the pool so rate limit and concurrency apply across all calls:
+
+```ts
+const apiPool = new ConcurPool({ rateLimit: { perSecond: 10 }, maxConcurrency: 4 });
+
+async function fetchUser(id: number) {
+  const result = await apiPool.runOne(() =>
+    fetch(`https://api.example.com/users/${id}`).then((r) => r.json()),
+  );
+  if (!result.ok) throw result.error;
+  return result.value;
+}
+
+const user1 = await fetchUser(1);
+const user2 = await fetchUser(2);
+```
+
 ## Configuration
 
 | Option               | Type                         | Description                                                                                                                    |
@@ -230,6 +343,22 @@ All options are scriptable; there are no interactive prompts, so the API is suit
 
 **`RunOptions`**: `{ signal?: AbortSignal, taskTimeoutMs?: number }` for per-run overrides on `pool.run()` and `pool.runOne()`.
 
+### TaskResult helpers
+
+- **`unwrapTaskResult(result)`** – returns `value` when `result.ok`; otherwise throws `result.error` (useful after `runOne`).
+- **`partitionTaskResults(results)`** – returns `{ values, failures }`; each failure includes `index`, `error`, and `durationMs` for logging or retries.
+- **`TaskFailure`** – type of entries in `failures`.
+
+```ts
+import { partitionTaskResults, unwrapTaskResult } from "ts-concur";
+
+const result = await pool.runOne(() => fetch("/api").then((r) => r.json()));
+const data = unwrapTaskResult(result);
+
+const { results } = await pool.run(tasks);
+const { values, failures } = partitionTaskResults(results);
+```
+
 ## Possible roadmap
 
 Ideas under consideration (no order or commitment).
@@ -239,8 +368,24 @@ Ideas under consideration (no order or commitment).
 - **Streaming results** – Async iterable or callback that yields results as each task finishes (unordered), for large batches.
 - **Rate limiting** – Token-bucket option with burst allowance, or clearer docs for current sliding-window behavior.
 - **Priority / lanes** – Priority queue or separate concurrency lanes for mixed critical vs best-effort work.
-- **DX** – Better TypeScript inference for heterogeneous task types, or small helpers (e.g. `unwrap` for `TaskResult`).
+- **DX** – Stronger TypeScript inference for heterogeneous task types (`unwrapTaskResult` / `partitionTaskResults` are available).
 - **Adaptive tuning** – Configurable step sizes or strategies, or warm restarts using `finalConcurrency` for the next batch.
+
+## Documentation
+
+Interactive documentation is built with [VitePress](https://vitepress.dev/). To run it locally:
+
+```bash
+pnpm run docs:dev
+```
+
+Then open http://localhost:5173. Build for production with `pnpm run docs:build` and preview with `pnpm run docs:preview`.
+
+### Deploy to GitHub Pages
+
+1. In the repo: **Settings → Pages → Build and deployment → Source** → choose **GitHub Actions**.
+2. Push to `main` (or trigger the workflow manually from the Actions tab). The workflow [`.github/workflows/deploy-docs.yml`](.github/workflows/deploy-docs.yml) builds the docs and deploys to GitHub Pages.
+3. The site will be at `https://<username>.github.io/ts-concur/`. If your repo has a different name, set the same value in `base` in [`docs/.vitepress/config.ts`](docs/.vitepress/config.ts) (e.g. `base: '/my-repo-name/'`).
 
 ## Build and test
 

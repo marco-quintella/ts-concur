@@ -34,3 +34,7 @@ Thumbs.db
 # Test and cache
 .cache/
 .turbo/
+
+# VitePress
+docs/.vitepress/cache/
+docs/.vitepress/dist/
