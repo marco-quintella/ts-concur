@@ -1,6 +1,6 @@
 # API
 
-The API is scriptable (no interactive prompts; results are deterministic for given inputs).
+The API is scriptable (no interactive prompts; returned result ordering/shape is deterministic for a given task list).
 
 ## ConcurPool
 
