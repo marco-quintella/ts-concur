@@ -146,24 +146,14 @@ const user2 = await fetchUser(2);
 
 ## Collecting only successful values
 
-Reusable helper to unwrap results and separate successes from failures:
+Use `partitionTaskResults` to separate successes from failures (failures include the original `index` for retries):
 
 ```ts
-import type { TaskResult } from "ts-concur";
-
-function partitionResults<T>(results: readonly TaskResult<T>[]) {
-  const values: T[] = [];
-  const errors: { error: unknown; durationMs: number }[] = [];
-  for (const r of results) {
-    if (r.ok) values.push(r.value);
-    else errors.push({ error: r.error, durationMs: r.durationMs });
-  }
-  return { values, errors };
-}
+import { partitionTaskResults } from "ts-concur";
 
 const { results } = await pool.run(tasks);
-const { values, errors } = partitionResults(results);
-console.log("Succeeded:", values.length, "Failed:", errors.length);
+const { values, failures } = partitionTaskResults(results);
+console.log("Succeeded:", values.length, "Failed:", failures.length);
 ```
 
 ## Manual retry for failed tasks

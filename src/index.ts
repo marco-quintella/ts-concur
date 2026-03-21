@@ -6,6 +6,7 @@
 
 export { ConcurPool } from "./ConcurPool.js";
 export { runPool } from "./pool.js";
+export { partitionTaskResults, unwrapTaskResult } from "./taskResult.js";
 export type {
   ConcurPoolOptions,
   RateLimitConfig,
@@ -15,3 +16,4 @@ export type {
   TaskResult,
   RunResult,
 } from "./types.js";
+export type { TaskFailure } from "./taskResult.js";
