@@ -343,6 +343,22 @@ All options are scriptable; there are no interactive prompts, so the API is suit
 
 **`RunOptions`**: `{ signal?: AbortSignal, taskTimeoutMs?: number }` for per-run overrides on `pool.run()` and `pool.runOne()`.
 
+### TaskResult helpers
+
+- **`unwrapTaskResult(result)`** – returns `value` when `result.ok`; otherwise throws `result.error` (useful after `runOne`).
+- **`partitionTaskResults(results)`** – returns `{ values, failures }`; each failure includes `index`, `error`, and `durationMs` for logging or retries.
+- **`TaskFailure`** – type of entries in `failures`.
+
+```ts
+import { partitionTaskResults, unwrapTaskResult } from "ts-concur";
+
+const result = await pool.runOne(() => fetch("/api").then((r) => r.json()));
+const data = unwrapTaskResult(result);
+
+const { results } = await pool.run(tasks);
+const { values, failures } = partitionTaskResults(results);
+```
+
 ## Possible roadmap
 
 Ideas under consideration (no order or commitment).
@@ -352,7 +368,7 @@ Ideas under consideration (no order or commitment).
 - **Streaming results** – Async iterable or callback that yields results as each task finishes (unordered), for large batches.
 - **Rate limiting** – Token-bucket option with burst allowance, or clearer docs for current sliding-window behavior.
 - **Priority / lanes** – Priority queue or separate concurrency lanes for mixed critical vs best-effort work.
-- **DX** – Better TypeScript inference for heterogeneous task types, or small helpers (e.g. `unwrap` for `TaskResult`).
+- **DX** – Stronger TypeScript inference for heterogeneous task types (`unwrapTaskResult` / `partitionTaskResults` are available).
 - **Adaptive tuning** – Configurable step sizes or strategies, or warm restarts using `finalConcurrency` for the next batch.
 
 ## Documentation

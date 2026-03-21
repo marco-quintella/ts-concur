@@ -52,3 +52,17 @@ Cancelled/timeout tasks have `ok: false` with `error` as a `DOMException` (name 
 ### RunOptions
 
 `{ signal?: AbortSignal; taskTimeoutMs?: number }` — per-run overrides for `pool.run()` and `pool.runOne()`.
+
+## TaskResult helpers
+
+### unwrapTaskResult(result)
+
+Returns `value` when `result.ok` is true; otherwise throws `result.error`.
+
+### partitionTaskResults(results)
+
+Splits a `readonly TaskResult<T>[]` into `{ values: T[]; failures: TaskFailure[] }`. Each failure includes `index` (position in the input array), `error`, and `durationMs`.
+
+### TaskFailure
+
+`{ index: number; error: unknown; durationMs: number }`.
