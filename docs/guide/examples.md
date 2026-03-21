@@ -64,7 +64,7 @@ const deadline = setTimeout(() => ctrl.abort(), 10_000);
 try {
   const { results } = await pool.run(tasks, { signal: ctrl.signal });
   const completed = results.filter((r) => r.ok);
-  const cancelled = results.filter((r) => !r.ok && r.error?.name === "AbortError");
+  const cancelled = results.filter((r) => !r.ok && r.error instanceof DOMException && r.error.name === "AbortError");
   console.log("Completed", completed.length, "cancelled", cancelled.length);
 } finally {
   clearTimeout(deadline);
